@@ -1,0 +1,10 @@
+roguec
+roguec-*
+rogue.dat
+rogue.hlp
+rogue.chr
+rogue.scr
+*.o
+*.s
+*.list
+*.map
