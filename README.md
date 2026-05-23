@@ -97,10 +97,19 @@ Data size  : $7B3E  #31550
 Prog mod, 6809 Obj, re-ent, R/O
 ```
 
-PMA shows the practical consequence: about four 8K blocks for code and four 8K
-blocks for data. That is balanced, but it leaves little room for growth on
-either side before crossing another 8K boundary.
+The `pmap` command output below shows the practical consequence of the Epyx port
+of Rogue running on a CoCo 3: five 8K blocks for code and three 8K
+blocks for data.
 
+```text
+ID   01 23 45 67 89 AB CD EF  Program
+---  -- -- -- -- -- -- -- --  -----------
+ 1   00 .. 13 02 03 04 05 3F  SYSTEM
+ 2   09 .. .. .. .. .. .. 0A  shell
+ 3   06 .. .. .. .. .. .. 0A  shell
+ 4   0B 01 12 0C 0D 0F 10 11  rogue
+ 5   14 .. .. .. .. .. .. 15  PMAP
+```
 ## Epyx's Data Image
 
 The Epyx program does not look like it treats `rogue.dat` as a loose collection
