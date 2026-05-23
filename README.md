@@ -6,13 +6,175 @@ translate the compact Epyx OS-9 architecture into maintainable C while keeping
 the same external data-area model.
 
 The original executable allocates 24K, reads `rogue.dat` into that arena, then
-uses fixed offsets inside the arena for game state, tables, strings, and
-screen buffers. This reconstruction keeps that model because it is the main
-reason the Epyx executable is about 39K.
+uses fixed offsets inside the arena for game state, tables, strings, and screen
+buffers. This reconstruction keeps that model because it is the main reason the
+Epyx executable is about 39K.
 
-See `EPYX_MEMORY_MODEL.md` for a focused write-up of that OS-9 memory strategy,
-including PMA/ident comparisons between the original Epyx binary and this C
-port.
+## Provenance
+
+The CoCo 3 Epyx port has a small author-credit trail hidden in its own data.
+The embedded save-file header in `rogue.dat` names the port authors as
+`Mike Leber, Ron Miller, James Long, Ed Rosenzweig`. The original assembly
+disassembly corroborates this: save-game creation writes that 50-byte header,
+and restore validation checks that a save file starts with the same author
+string. In the local `rogue.asm`, see the save logic near line 416 and the
+restore validation near line 501.
+
+The in-game version command is more cryptic. It prints
+`Rogue version %i.%i (mll and rbm)`, which corresponds to Mike L. Leber and
+Ron B. Miller. On a CoCo display this can look like `m1 and r0m`, but the bytes
+in `rogue.dat` are `mll and rbm`. The version-command path in the local
+disassembly references that string near line 8065.
+
+This port belongs to the commercial Epyx/A.I. Design family of Rogue releases,
+derived from the earlier Unix Rogue lineage by Michael Toy, Ken Arnold, and
+Glenn R. Wichman. L. Curtis Boyle's
+[Rogue page](https://www.lcurtisboyle.com/nitros9/rogue.html) credits the CoCo
+3 port to Mike L. Leber, Ron B. Miller, James Long, and Ed Rosenzweig for Epyx.
+It also notes the wonderfully odd historical detail that CoCo 3 Rogue shipped
+with an early OS-9 Level II environment, and that some early users treated Rogue
+disks as a practical way to bootstrap Level II before the official release fully
+landed.
+
+There is also a useful oral-history thread from the Tandy side. In a Discord
+chat on May 22, 2026, Mark Siegel of Tandy recalled that Epyx had shown Rogue
+for the Apple II at CES, after which he requested an OS-9 version for the CoCo
+3. He remembered the CoCo 3 version as using a graphics character set, and noted
+that Rogue was already freely distributed on systems such as Coherent and Minix.
+He did not know where the root version used for the CoCo port came from, so that
+part of the port lineage remains unresolved.
+
+A few cross-checks line up with that author trail. CoCopedia's
+[Sub Battle Simulator page](https://www.cocopedia.com/wiki/index.php/Sub_Battle_Simulator)
+credits Jesse Taylor and Mike Leber on another CoCo/Epyx title. MobyGames'
+[Ed Rose page](https://www.mobygames.com/person/2097/ed-rose/) identifies Ed
+Rose as Ed Rosenzweig and notes his Epyx CoCo port work. For broader historical
+context and source archaeology, see the
+[Rogue Archive](https://britzl.github.io/roguearchive/) and Glenn Wichman's
+[A Brief History of Rogue](https://web.archive.org/web/20150217024917/http://www.wichman.org/roguehistory.html).
+
+## OS-9 Memory Model
+
+The Epyx CoCo 3 port of Rogue uses an OS-9 memory layout that looks odd at
+first, but makes a great deal of sense once the 8K block allocator is visible.
+The game keeps the program module mostly code, declares almost no OS-9 data,
+then allocates and loads the real game data area at runtime from `rogue.dat`.
+
+That changes the tradeoff. Instead of spending four 8K blocks on code and four
+8K blocks on declared process data, Epyx shifts the budget toward code. The
+external `rogue.dat` file becomes the 24K game arena, and the program module can
+grow closer to 40K.
+
+The original Epyx binary reports a tiny declared data size:
+
+```text
+Header for : rogue
+Module size: $97FC  #38908
+Exec. off  : $0013  #19
+Data size  : $0013  #19
+Prog mod, 6809 Obj, re-ent, R/O
+```
+
+The companion file is much larger:
+
+```text
+rogue.dat: 24138 bytes
+rogue:     38908 bytes
+total:     63046 bytes
+```
+
+That is the giveaway. The OS-9 module is not carrying normal initialized game
+data. The data lives in `rogue.dat`, and the loader code brings it into memory
+after startup.
+
+The C port initially had a very different shape:
+
+```text
+Header for : roguec
+Module size: $7374  #29556
+Exec. off  : $000D  #13
+Data size  : $7B3E  #31550
+Prog mod, 6809 Obj, re-ent, R/O
+```
+
+PMA shows the practical consequence: about four 8K blocks for code and four 8K
+blocks for data. That is balanced, but it leaves little room for growth on
+either side before crossing another 8K boundary.
+
+## Epyx's Data Image
+
+The Epyx program does not look like it treats `rogue.dat` as a loose collection
+of records. It looks like `rogue.dat` is a pre-laid-out memory image.
+
+The evidence in `rogue.asm` points that way:
+
+- startup asks OS-9 for about 24K of memory
+- startup opens `rogue.dat`
+- startup reads the data file into the newly allocated memory area
+- many routines reference fixed offsets into that area
+- save/restore writes and reads the whole data block as one contiguous region
+- pointer tables use fixed-address adjustment expressions tied to the program
+  load offset
+
+That suggests the original build process probably assembled or linked code and
+data with a known address model, then emitted the program module and the data
+image separately. The exact Epyx toolchain is not proven from the source we have,
+but the runtime model is clear: the binary expects `rogue.dat` to already have
+the shape of the process data area it wants.
+
+OS-9 Level Two memory is allocated in 8K blocks. Once code or data crosses an 8K
+boundary, another whole block is needed. The C port's old static-arena build was
+effectively:
+
+```text
+code: 4 blocks, just under 32K
+data: 4 blocks, just under 32K
+```
+
+The Epyx layout is closer to:
+
+```text
+code: up to 5 blocks, just under 40K
+data: small declared data plus a 24K loaded arena
+```
+
+So the trick is not merely saving memory. It changes which side gets the scarce
+8K blocks. Rogue needs a lot of code for behaviors, commands, monsters, and
+object effects. Epyx bought more code room by making the large data area
+explicitly loaded instead of declared in the module header.
+
+## Current Direction
+
+The C port now uses the heap-arena layout for the normal `roguec` build:
+
+```sh
+make
+```
+
+This build heap-allocates `rogue_arena` before reading `rogue.dat`, instead of
+declaring the full arena as C module data. `roguec-heap` is kept as an explicit
+same-layout comparison binary, and `roguec-static` preserves the old static
+arena layout as a fallback.
+
+Latest size comparison:
+
+| Binary | Module size | Data size | Notes |
+|---|---:|---:|---|
+| old static `roguec` | `$7374` / `29556` | `$7B3E` / `31550` | previous default layout |
+| `roguec-static` | `$737B` / `29563` | `$7B3E` / `31550` | old layout kept as fallback |
+| `roguec` | `$7608` / `30216` | `$1B0A` / `6922` | normal Epyx-shaped build |
+| `roguec-small` | `$63E0` / `25568` | `$1282` / `4738` | feature-trimmed heap build |
+| `roguec-heap` | `$760D` / `30221` | `$1B0A` / `6922` | same heap layout under explicit name |
+
+The tradeoff remains exactly what we want to study. The 24K arena still exists
+at runtime, so this is not a total-memory miracle. But the arena is no longer
+part of the module's declared data size, which means the OS-9 block allocation
+starts to resemble Epyx's split.
+
+The promising direction is to keep `rogue.dat` external and use the heap-arena
+model as the main architecture. It preserves portability better than loading
+data at address `$0000`, but it keeps the important idea: bulky game data stays
+out of the module's declared data allocation so code has room to grow.
 
 ## Building
 
