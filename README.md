@@ -202,7 +202,35 @@ Build from this repository root:
 make
 ```
 
-Override `CMOC_OS9` or `NITROS9` if those sibling paths are different.
+Set `NITROS9DIR` to the root of the NitrOS-9 checkout if it is not beside
+this repository. `CMOC_OS9` defaults to the sibling `cmoc_os9` checkout next to
+`NITROS9DIR`.
+
+Create a bootable CoCo 3 NitrOS-9 disk image from this repository:
+
+```sh
+make disk
+```
+
+That builds (if needed) the minimal Level 2 floppy recipe at
+`$(NITROS9DIR)/recipes/coco3/floppy` (`MINIMAL=1`, i.e. `l2_coco3_minimal.dsk`)
+and copies it into this repository as `roguec.dsk`. The minimal recipe is used
+because the full `coco3` recipe disk has almost no free space left, which
+would silently truncate the files copied on below. `roguec` and the
+`rogue.dat`/`rogue.hlp`/`rogue.chr`/`rogue.scr` data files are then copied
+onto the image with the NitrOS-9 `os9` toolshed utility: the binary goes into
+`CMDS`, and the data files go into a `ROGUE` subdirectory, matching the paths
+(`ROGUE/rogue.dat`, etc.) the reconstructed C code opens at runtime. Set
+`LEVEL` to match the NitrOS-9 level you want built (default `2`), and
+`FLOPPY_MINIMAL=0` to use the full recipe instead (not recommended, see
+above). The `os9` toolshed binary must be on your `PATH` (or set `OS9` to its
+location).
+
+Launch the generated disk in MAME:
+
+```sh
+make run
+```
 
 Current status:
 

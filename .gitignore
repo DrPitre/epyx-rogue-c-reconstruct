@@ -4,6 +4,8 @@ rogue.dat
 rogue.hlp
 rogue.chr
 rogue.scr
+*.dsk
+build/
 *.o
 *.s
 *.list
