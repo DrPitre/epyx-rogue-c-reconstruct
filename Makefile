@@ -10,6 +10,7 @@ ROGUE_DAT_SRC ?= $(NITROS9DIR)/3rdparty/packages/rogue/rogue.dat
 ROGUE_HLP_SRC ?= $(NITROS9DIR)/3rdparty/packages/rogue/rogue.hlp
 ROGUE_CHR_SRC ?= $(NITROS9DIR)/3rdparty/packages/rogue/rogue.chr
 ROGUE_SCR_SRC ?= $(NITROS9DIR)/3rdparty/packages/rogue/rogue.scr
+STARTUP ?= startup
 LEVEL ?= 2
 FLOPPY_DIR ?= $(NITROS9DIR)/recipes/coco3/floppy
 # The full coco3 recipe disk has almost no free space left, so copying
@@ -94,9 +95,9 @@ rogue.scr: $(ROGUE_SCR_SRC)
 	$(LWASM) $(ASFLAGS) -o$@ $<
 
 $(FLOPPY_DIR)/$(FLOPPY_DSKIMAGE):
-	$(MAKE) -C $(FLOPPY_DIR) LEVEL=$(LEVEL) MINIMAL=$(FLOPPY_MINIMAL)
+	$(MAKE) -C $(FLOPPY_DIR) LEVEL=$(LEVEL) MINIMAL=$(FLOPPY_MINIMAL) STARTUP=$(abspath $(STARTUP))
 
-$(DSKIMAGE): $(FLOPPY_DIR)/$(FLOPPY_DSKIMAGE) $(DISK_PROGRAMS) rogue.dat rogue.hlp rogue.chr rogue.scr
+$(DSKIMAGE): $(FLOPPY_DIR)/$(FLOPPY_DSKIMAGE) $(DISK_PROGRAMS) rogue.dat rogue.hlp rogue.chr rogue.scr $(STARTUP)
 	cp $< $@
 	$(OS9MAKDIR) $@,$(ROGUE_DISK_DIR)
 	$(OS9COPY) rogue.dat rogue.hlp rogue.chr rogue.scr $@,$(ROGUE_DISK_DIR)

@@ -233,11 +233,20 @@ int count;
   }
 }
 
+static int message_width()
+{
+  int width;
+
+  width = rogue_get8(OFF_SCREEN_MAX_X);
+  if (width < 1) width = rogue_get8(OFF_SCREEN_WIDTH) - 1;
+  return width;
+}
+
 static void show_cont()
 {
   int width;
 
-  width = rogue_get8(OFF_SCREEN_WIDTH);
+  width = message_width();
   epyx_move_cursor(width - 4, 0);
   epyx_reverse_on();
   epyx_write_string(rogue_string_at(OFF_MESSAGE_CONT));
@@ -254,7 +263,7 @@ char *buffer;
   int final_start;
 
   len = str_len(buffer);
-  width = rogue_get8(OFF_SCREEN_WIDTH);
+  width = message_width();
   if (width < 10 || len <= width) {
     epyx_write_string(buffer);
     epyx_clear_to_eol();
@@ -310,6 +319,12 @@ void epyx_repeat_message()
 {
   epyx_move_cursor(0, 0);
   display_message_buffer(epyx_format_buffer());
+}
+
+void epyx_message_clear_state()
+{
+  rogue_put8(OFF_MESSAGE_LENGTH, 0);
+  message_busy = 0;
 }
 
 void epyx_message_start_turn()

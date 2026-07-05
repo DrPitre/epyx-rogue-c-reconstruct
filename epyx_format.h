@@ -9,6 +9,7 @@ int epyx_format(char *dest, int max, const char *fmt, ...);
 void epyx_printf(const char *fmt, ...);
 void epyx_message(const char *fmt, ...);
 void epyx_repeat_message();
+void epyx_message_clear_state();
 void epyx_message_start_turn();
 
 #endif

@@ -15,6 +15,7 @@ int rogue_ignore_signals();
 static void redraw_dungeon();
 static void show_inventory();
 static int draw_inventory_lines(int kind);
+static void wait_for_inventory_continue();
 #ifndef ROGUE_SMALL
 static void show_hall_of_fame();
 #endif
@@ -2649,7 +2650,23 @@ int max;
 }
 #endif
 
-static InventoryItem *choose_item(action, kind)
+static void show_item_prompt(action)
+const char *action;
+{
+  char *buffer;
+
+  buffer = epyx_format_buffer();
+  epyx_format(buffer, FORMAT_BUFFER_SIZE,
+              rogue_string_at(OFF_OBJECT_ACTION_PROMPT), action);
+  if (string_width(buffer) > rogue_get8(OFF_SCREEN_MAX_X))
+    buffer[rogue_get8(OFF_SCREEN_MAX_X)] = 0;
+  epyx_move_cursor(0, 0);
+  epyx_write_string(buffer);
+  epyx_clear_to_eol();
+  epyx_message_clear_state();
+}
+
+static InventoryItem *select_item_from_list(action, kind)
 const char *action;
 int kind;
 {
@@ -2658,30 +2675,10 @@ int kind;
   int rows;
   int prompt_y;
 
-  if (inventory_count == 0 || (kind && !has_inventory_kind(kind))) {
-    no_appropriate();
-    return 0;
-  }
-
-  if (!action_auto_lists(action)) {
-    epyx_message(rogue_string_at(OFF_OBJECT_ACTION_PROMPT), action);
-    ch = read_key();
-    if (ch == KEY_ESCAPE || ch == KEY_CTRL_E) {
-      epyx_message(0);
-      return 0;
-    }
-    if (ch >= 'A' && ch <= 'Z') ch += 'a' - 'A';
-    if (ch != '*' && ch != ':') {
-      index = ch - 'a';
-      if (index >= 0 && index < inventory_count) return &inventory[index];
-      epyx_message(rogue_string_at(OFF_BAD_PACK_LETTER),
-                   'a' + inventory_count - 1);
-      return 0;
-    }
-  }
-
   while (1) {
+    epyx_message_clear_state();
     epyx_clear_window();
+    epyx_move_cursor(0, 0);
     rows = draw_inventory_lines(kind);
     prompt_y = rogue_get8(OFF_SCREEN_HEIGHT) - 1;
     if (prompt_y < rows + 1) prompt_y = rows + 1;
@@ -2690,24 +2687,55 @@ int kind;
     epyx_printf(rogue_string_at(OFF_SELECT_ITEM_ACTION), action);
     epyx_reverse_off();
     epyx_clear_to_eol();
+
     ch = read_key();
     if (ch == KEY_ESCAPE || ch == KEY_CTRL_E) {
       redraw_dungeon();
       return 0;
     }
-    if (ch == '*' || ch == ':') {
-      continue;
-    }
     if (ch >= 'A' && ch <= 'Z') ch += 'a' - 'A';
     index = ch - 'a';
-    if (index >= 0 && index < inventory_count) {
+    if (index >= 0 && index < inventory_count &&
+        (!kind || inventory[index].kind == kind)) {
       redraw_dungeon();
       return &inventory[index];
     }
-    redraw_dungeon();
-    epyx_message(rogue_string_at(OFF_BAD_PACK_LETTER),
-                 'a' + inventory_count - 1);
+  }
+}
+
+static InventoryItem *choose_item(action, kind)
+const char *action;
+int kind;
+{
+  int ch;
+  int index;
+
+  if (inventory_count == 0 || (kind && !has_inventory_kind(kind))) {
+    no_appropriate();
     return 0;
+  }
+
+  while (1) {
+    if (action_auto_lists(action)) return select_item_from_list(action, kind);
+
+    show_item_prompt(action);
+    ch = read_key();
+    if (ch == KEY_ESCAPE || ch == KEY_CTRL_E) {
+      epyx_message(0);
+      return 0;
+    }
+    if (ch >= 'A' && ch <= 'Z') ch += 'a' - 'A';
+    if (ch != '*' && ch != ':') {
+      index = ch - 'a';
+      if (index >= 0 && index < inventory_count &&
+          (!kind || inventory[index].kind == kind))
+        return &inventory[index];
+      if (ch < 'a' || ch > 'z') return select_item_from_list(action, kind);
+      epyx_message(rogue_string_at(OFF_BAD_PACK_LETTER),
+                   'a' + inventory_count - 1);
+      return 0;
+    }
+    return select_item_from_list(action, kind);
   }
 }
 
@@ -3412,7 +3440,9 @@ int kind;
     item = &inventory[i];
     if (kind && item->kind != kind) continue;
     epyx_move_cursor(0, row++);
-    epyx_printf("%c) %s", 'a' + i, inventory_object_name(item));
+    epyx_write_char('a' + i);
+    epyx_write_string(") ");
+    epyx_write_string(inventory_object_name(item));
     if (i == wielded_weapon_index) epyx_write_string(
         rogue_string_at(OFF_WEAPON_IN_HAND));
     if (i == worn_armor_index) epyx_write_string(
