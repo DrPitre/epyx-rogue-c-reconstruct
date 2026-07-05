@@ -240,7 +240,7 @@ static void show_cont()
   width = rogue_get8(OFF_SCREEN_WIDTH);
   epyx_move_cursor(width - 4, 0);
   epyx_reverse_on();
-  epyx_write_string("Cont");
+  epyx_write_string(rogue_string_at(OFF_MESSAGE_CONT));
   epyx_reverse_off();
 }
 

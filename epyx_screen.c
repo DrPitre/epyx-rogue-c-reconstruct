@@ -70,6 +70,12 @@ int ch;
   write(1, rogue_arena + OFF_CURSOR_XY_BUFFER, 4);
 }
 
+static void write_control(off)
+unsigned int off;
+{
+  write(1, rogue_arena + off, 2);
+}
+
 void epyx_clear_window()
 {
   epyx_write_char(12);
@@ -82,20 +88,20 @@ void epyx_clear_to_eol()
 
 void epyx_cursor_on()
 {
-  write(1, rogue_arena + OFF_CURSOR_ON, 2);
+  write_control(OFF_CURSOR_ON);
 }
 
 void epyx_cursor_off()
 {
-  write(1, rogue_arena + OFF_CURSOR_OFF, 2);
+  write_control(OFF_CURSOR_OFF);
 }
 
 void epyx_reverse_on()
 {
-  write(1, rogue_arena + OFF_REVERSE_ON, 2);
+  write_control(OFF_REVERSE_ON);
 }
 
 void epyx_reverse_off()
 {
-  write(1, rogue_arena + OFF_REVERSE_OFF, 2);
+  write_control(OFF_REVERSE_OFF);
 }

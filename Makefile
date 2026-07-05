@@ -3,7 +3,7 @@ CMOC ?= cmoc
 LWASM ?= lwasm
 NITROS9DIR ?= $(abspath ../coco-shelf/nitros9)
 CMOC_OS9 ?= $(abspath $(NITROS9DIR)/../cmoc_os9)
-CFLAGS = --os9 -O2 --function-stack=0 --add-os9-stack-space=256 -I. -I$(CMOC_OS9)/include
+CFLAGS = --os9 -O2 -fomit-frame-pointer --function-stack=0 --add-os9-stack-space=256 -I. -I$(CMOC_OS9)/include
 ASFLAGS = --obj -I$(CMOC_OS9)/include
 LDLIBS = -L$(CMOC_OS9)/lib -lc
 ROGUE_DAT_SRC ?= $(NITROS9DIR)/3rdparty/packages/rogue/rogue.dat
@@ -36,6 +36,7 @@ ASRCS = rogue_signal.as
 OBJS = $(SRCS:.c=.o) $(ASRCS:.as=.o)
 SMALL_OBJS = $(SRCS:.c=.small.o) $(ASRCS:.as=.small.o)
 STATIC_OBJS = $(SRCS:.c=.static.o) $(ASRCS:.as=.static.o)
+DISK_PROGRAMS = $(PROGRAM) roguec-small roguec-heap
 
 all: $(PROGRAM) roguec-small roguec-heap roguec-static rogue.dat rogue.hlp rogue.chr rogue.scr
 
@@ -95,13 +96,13 @@ rogue.scr: $(ROGUE_SCR_SRC)
 $(FLOPPY_DIR)/$(FLOPPY_DSKIMAGE):
 	$(MAKE) -C $(FLOPPY_DIR) LEVEL=$(LEVEL) MINIMAL=$(FLOPPY_MINIMAL)
 
-$(DSKIMAGE): $(FLOPPY_DIR)/$(FLOPPY_DSKIMAGE) $(PROGRAM) rogue.dat rogue.hlp rogue.chr rogue.scr
+$(DSKIMAGE): $(FLOPPY_DIR)/$(FLOPPY_DSKIMAGE) $(DISK_PROGRAMS) rogue.dat rogue.hlp rogue.chr rogue.scr
 	cp $< $@
 	$(OS9MAKDIR) $@,$(ROGUE_DISK_DIR)
 	$(OS9COPY) rogue.dat rogue.hlp rogue.chr rogue.scr $@,$(ROGUE_DISK_DIR)
 	$(OS9ATTR_TEXT) $(foreach f,rogue.dat rogue.hlp rogue.chr rogue.scr,$@,$(ROGUE_DISK_DIR)/$(f))
-	$(OS9COPY) $(PROGRAM) $@,CMDS
-	$(OS9ATTR_EXEC) $@,CMDS/$(PROGRAM)
+	$(OS9COPY) $(DISK_PROGRAMS) $@,CMDS
+	$(OS9ATTR_EXEC) $(foreach f,$(DISK_PROGRAMS),$@,CMDS/$(f))
 
 clean:
 	rm -f $(PROGRAM) roguec-small roguec-heap roguec-static rogue.dat rogue.hlp rogue.chr rogue.scr *.o *.s *.list *.map $(DSKIMAGE)

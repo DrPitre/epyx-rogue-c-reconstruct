@@ -161,25 +161,55 @@ typedef struct inventory_item {
   char armor_class;
 } InventoryItem;
 
+typedef struct game_save_state {
+  int hero_x;
+  int hero_y;
+  int player_gold;
+  char dungeon_level;
+  char player_hp;
+  char player_max_hp;
+  char player_strength;
+  char wielded_weapon_index;
+  char worn_armor_index;
+  char left_ring_index;
+  char right_ring_index;
+  char ring_strength_bonus;
+  char see_invisible;
+  char spawn_clock;
+  char frozen_turns;
+  char flytrap_hold;
+  char inventory_count;
+  char dungeon_x;
+  char dungeon_y;
+  char dungeon_width;
+  char dungeon_height;
+  char status_y;
+  char stair_x;
+  char stair_y;
+} GameSaveState;
+
 static void apply_ring_effect();
 static RogueObject *object_at();
 static RogueMonster *monster_at();
 static void draw_floor_objects();
 static void draw_monsters();
 static void draw_map_row();
+static void remove_item();
+static const char *inventory_object_name();
 
 static int hero_x;
 static int hero_y;
 static char dungeon_level;
 static int player_gold;
 static char player_hp;
+static char player_max_hp;
+static char player_strength;
 static char wielded_weapon_index;
 static char worn_armor_index;
 static char left_ring_index;
 static char right_ring_index;
 static char ring_strength_bonus;
 static char see_invisible;
-static char armor_guard;
 static char turn_taken;
 static char inventory_count;
 static char dungeon_x;
@@ -197,6 +227,8 @@ static char next_fast_move;
 static char persistent_fast_mode;
 static char go_over_object;
 static char spawn_clock;
+static char frozen_turns;
+static char flytrap_hold;
 static char death_cause;
 static char last_status_level;
 static char last_status_hp;
@@ -234,7 +266,7 @@ static char called_names[CALLED_KIND_MAX][CALLED_ITEM_MAX][CALLED_NAME_MAX];
 #endif
 
 static const char save_magic[SAVE_MAGIC_SIZE] = {
-  'R', 'O', 'G', 'C', 'S', 'A', 'V', '4'
+  'R', 'O', 'G', 'C', 'S', 'A', 'V', '8'
 };
 
 static const char potion_color_text[] =
@@ -344,6 +376,38 @@ int ch;
   hp = 0;
   for (i = 0; i < level; i++) hp += 1 + random_range(8);
   return hp;
+}
+
+static int monster_damage(ch)
+int ch;
+{
+  char *text;
+  int dice;
+  int sides;
+  int damage;
+  int i;
+
+  if (ch < 'A' || ch > 'Z') ch = 'K';
+  text = rogue_string_at(rogue_get16(OFF_MONSTER_TABLE +
+                         (ch - 'A') * MONSTER_ENTRY_SIZE + 14));
+  damage = 0;
+  while (*text) {
+    while (*text && (*text < '0' || *text > '9')) text++;
+    if (!*text) break;
+    dice = 0;
+    while (*text >= '0' && *text <= '9')
+      dice = dice * 10 + *text++ - '0';
+    if (*text != 'd') break;
+    text++;
+    sides = 0;
+    while (*text >= '0' && *text <= '9')
+      sides = sides * 10 + *text++ - '0';
+    for (i = 0; i < dice; i++)
+      if (sides > 0) damage += 1 + random_range(sides);
+    while (*text && *text != '/') text++;
+    if (*text == '/') text++;
+  }
+  return damage;
 }
 
 static int arena_string_len(off)
@@ -709,35 +773,41 @@ static int save_game_state()
 {
   path_id fd;
   char *path;
+  GameSaveState state;
 
   path = rogue_string_at(OFF_SAVE_FILE_NAME);
   _os_delete(path, FAM_WRITE);
   if (_os_create(path, FAM_WRITE, &fd, FAP_READ | FAP_WRITE | FAP_PREAD) != 0)
     return 0;
 
+  state.hero_x = hero_x;
+  state.hero_y = hero_y;
+  state.player_gold = player_gold;
+  state.dungeon_level = dungeon_level;
+  state.player_hp = player_hp;
+  state.player_max_hp = player_max_hp;
+  state.player_strength = player_strength;
+  state.wielded_weapon_index = wielded_weapon_index;
+  state.worn_armor_index = worn_armor_index;
+  state.left_ring_index = left_ring_index;
+  state.right_ring_index = right_ring_index;
+  state.ring_strength_bonus = ring_strength_bonus;
+  state.see_invisible = see_invisible;
+  state.spawn_clock = spawn_clock;
+  state.frozen_turns = frozen_turns;
+  state.flytrap_hold = flytrap_hold;
+  state.inventory_count = inventory_count;
+  state.dungeon_x = dungeon_x;
+  state.dungeon_y = dungeon_y;
+  state.dungeon_width = dungeon_width;
+  state.dungeon_height = dungeon_height;
+  state.status_y = status_y;
+  state.stair_x = stair_x;
+  state.stair_y = stair_y;
+
   if (!write_block(fd, save_magic, SAVE_MAGIC_SIZE) ||
       !write_block(fd, rogue_arena, ROGUE_ARENA_SIZE) ||
-      !write_block(fd, &hero_x, sizeof(hero_x)) ||
-      !write_block(fd, &hero_y, sizeof(hero_y)) ||
-      !write_block(fd, &dungeon_level, sizeof(dungeon_level)) ||
-      !write_block(fd, &player_gold, sizeof(player_gold)) ||
-      !write_block(fd, &player_hp, sizeof(player_hp)) ||
-      !write_block(fd, &wielded_weapon_index, sizeof(wielded_weapon_index)) ||
-      !write_block(fd, &worn_armor_index, sizeof(worn_armor_index)) ||
-      !write_block(fd, &left_ring_index, sizeof(left_ring_index)) ||
-      !write_block(fd, &right_ring_index, sizeof(right_ring_index)) ||
-      !write_block(fd, &ring_strength_bonus, sizeof(ring_strength_bonus)) ||
-      !write_block(fd, &see_invisible, sizeof(see_invisible)) ||
-      !write_block(fd, &armor_guard, sizeof(armor_guard)) ||
-      !write_block(fd, &spawn_clock, sizeof(spawn_clock)) ||
-      !write_block(fd, &inventory_count, sizeof(inventory_count)) ||
-      !write_block(fd, &dungeon_x, sizeof(dungeon_x)) ||
-      !write_block(fd, &dungeon_y, sizeof(dungeon_y)) ||
-      !write_block(fd, &dungeon_width, sizeof(dungeon_width)) ||
-      !write_block(fd, &dungeon_height, sizeof(dungeon_height)) ||
-      !write_block(fd, &status_y, sizeof(status_y)) ||
-      !write_block(fd, &stair_x, sizeof(stair_x)) ||
-      !write_block(fd, &stair_y, sizeof(stair_y)) ||
+      !write_block(fd, &state, sizeof(state)) ||
       !write_block(fd, floor_objects, sizeof(floor_objects)) ||
       !write_block(fd, inventory, sizeof(inventory)) ||
       !write_block(fd, monsters, sizeof(monsters)) ||
@@ -763,6 +833,7 @@ static int load_game_state()
   path_id fd;
   char magic[SAVE_MAGIC_SIZE];
   char *path;
+  GameSaveState state;
   int i;
 
   path = rogue_string_at(OFF_SAVE_FILE_NAME);
@@ -780,27 +851,7 @@ static int load_game_state()
   }
 
   if (!read_block(fd, rogue_arena, ROGUE_ARENA_SIZE) ||
-      !read_block(fd, &hero_x, sizeof(hero_x)) ||
-      !read_block(fd, &hero_y, sizeof(hero_y)) ||
-      !read_block(fd, &dungeon_level, sizeof(dungeon_level)) ||
-      !read_block(fd, &player_gold, sizeof(player_gold)) ||
-      !read_block(fd, &player_hp, sizeof(player_hp)) ||
-      !read_block(fd, &wielded_weapon_index, sizeof(wielded_weapon_index)) ||
-      !read_block(fd, &worn_armor_index, sizeof(worn_armor_index)) ||
-      !read_block(fd, &left_ring_index, sizeof(left_ring_index)) ||
-      !read_block(fd, &right_ring_index, sizeof(right_ring_index)) ||
-      !read_block(fd, &ring_strength_bonus, sizeof(ring_strength_bonus)) ||
-      !read_block(fd, &see_invisible, sizeof(see_invisible)) ||
-      !read_block(fd, &armor_guard, sizeof(armor_guard)) ||
-      !read_block(fd, &spawn_clock, sizeof(spawn_clock)) ||
-      !read_block(fd, &inventory_count, sizeof(inventory_count)) ||
-      !read_block(fd, &dungeon_x, sizeof(dungeon_x)) ||
-      !read_block(fd, &dungeon_y, sizeof(dungeon_y)) ||
-      !read_block(fd, &dungeon_width, sizeof(dungeon_width)) ||
-      !read_block(fd, &dungeon_height, sizeof(dungeon_height)) ||
-      !read_block(fd, &status_y, sizeof(status_y)) ||
-      !read_block(fd, &stair_x, sizeof(stair_x)) ||
-      !read_block(fd, &stair_y, sizeof(stair_y)) ||
+      !read_block(fd, &state, sizeof(state)) ||
       !read_block(fd, floor_objects, sizeof(floor_objects)) ||
       !read_block(fd, inventory, sizeof(inventory)) ||
       !read_block(fd, monsters, sizeof(monsters)) ||
@@ -818,6 +869,30 @@ static int load_game_state()
   }
 
   _os_close(fd);
+  hero_x = state.hero_x;
+  hero_y = state.hero_y;
+  player_gold = state.player_gold;
+  dungeon_level = state.dungeon_level;
+  player_hp = state.player_hp;
+  player_max_hp = state.player_max_hp;
+  player_strength = state.player_strength;
+  wielded_weapon_index = state.wielded_weapon_index;
+  worn_armor_index = state.worn_armor_index;
+  left_ring_index = state.left_ring_index;
+  right_ring_index = state.right_ring_index;
+  ring_strength_bonus = state.ring_strength_bonus;
+  see_invisible = state.see_invisible;
+  spawn_clock = state.spawn_clock;
+  frozen_turns = state.frozen_turns;
+  flytrap_hold = state.flytrap_hold;
+  inventory_count = state.inventory_count;
+  dungeon_x = state.dungeon_x;
+  dungeon_y = state.dungeon_y;
+  dungeon_width = state.dungeon_width;
+  dungeon_height = state.dungeon_height;
+  status_y = state.status_y;
+  stair_x = state.stair_x;
+  stair_y = state.stair_y;
   return 1;
 }
 #endif
@@ -1191,7 +1266,8 @@ static void draw_status()
 
   redraw = status_invalid;
   screen_width = rogue_get8(OFF_SCREEN_WIDTH);
-  armor = worn_armor_index != NO_ITEM_INDEX ? 6 : 5;
+  armor = worn_armor_index != NO_ITEM_INDEX ?
+      11 - inventory[worn_armor_index].armor_class : 5;
 
   if (screen_width >= 8 && (redraw || dungeon_level != last_status_level)) {
     epyx_move_cursor(0, status_y);
@@ -1200,13 +1276,14 @@ static void draw_status()
   }
   if (screen_width >= 23 && (redraw || player_hp != last_status_hp)) {
     epyx_move_cursor(9, status_y);
-    epyx_printf(rogue_string_at(OFF_STATUS_HITS_FORMAT), player_hp, 12);
+    epyx_printf(rogue_string_at(OFF_STATUS_HITS_FORMAT), player_hp,
+                player_max_hp);
     last_status_hp = player_hp;
   }
   if (screen_width >= 36 && redraw) {
     epyx_move_cursor(23, status_y);
     epyx_printf(rogue_string_at(OFF_STATUS_STRENGTH_FORMAT),
-                16 + ring_strength_bonus, 16);
+                player_strength + ring_strength_bonus, 16);
   }
   if (screen_width >= 48 && (redraw || player_gold != last_status_gold)) {
     epyx_move_cursor(38, status_y);
@@ -1775,6 +1852,7 @@ static void erase_hero()
 static void erase_monster(monster)
 RogueMonster *monster;
 {
+  if (!overlay_visible_position(monster->x, monster->y)) return;
   put_at(monster->x, monster->y, floor_glyph_at(monster->x, monster->y));
 }
 
@@ -1783,19 +1861,182 @@ static void no_appropriate()
   epyx_message(rogue_string_at(OFF_NO_APPROPRIATE_OBJECT));
 }
 
+static void message_defeated(monster)
+RogueMonster *monster;
+{
+  epyx_message(rogue_string_at(OFF_COMBAT_JOIN_FORMAT),
+               rogue_string_at(OFF_COMBAT_DEFEATED),
+               monster_name(monster));
+}
+
+static void message_you_hit()
+{
+  epyx_message(rogue_string_at(OFF_COMBAT_YOU_VERB),
+               rogue_string_at(OFF_COMBAT_HIT));
+}
+
+static void defeat_monster(monster)
+RogueMonster *monster;
+{
+  RogueObject *obj;
+  int kind;
+
+  if (monster->type == 'F') flytrap_hold = 0;
+  erase_monster(monster);
+  if (random_range(5) != 0 || object_at(monster->x, monster->y)) return;
+  obj = free_floor_object();
+  if (!obj) return;
+  kind = random_range(5);
+  obj->x = monster->x;
+  obj->y = monster->y;
+  obj->quantity = 1;
+  obj->known = 0;
+  obj->kind = (char) (kind + OBJ_FOOD);
+  if (obj->kind == OBJ_GOLD) {
+    obj->quantity = (char) (5 + random_range(dungeon_level * 10 + 20));
+    obj->glyph = glyph(GLYPH_GOLD);
+  } else if (obj->kind == OBJ_POTION) {
+    obj->glyph = glyph(GLYPH_POTION);
+    obj->subtype = (char) random_range(POTION_COUNT);
+  } else if (obj->kind == OBJ_SCROLL) {
+    obj->glyph = glyph(GLYPH_SCROLL);
+    obj->subtype = (char) random_range(SCROLL_COUNT);
+  } else if (obj->kind == OBJ_WEAPON) {
+    obj->glyph = glyph(GLYPH_WEAPON);
+    obj->subtype = (char) random_range(WEAPON_COUNT);
+  } else {
+    obj->glyph = glyph(GLYPH_FOOD);
+    obj->subtype = 0;
+  }
+  draw_floor_objects();
+}
+
+static int nymph_steal(monster)
+RogueMonster *monster;
+{
+  InventoryItem *item;
+  int chosen;
+  int count;
+  int i;
+  char quantity;
+
+  chosen = NO_ITEM_INDEX;
+  count = 0;
+  for (i = 0; i < inventory_count; i++) {
+    item = &inventory[i];
+    if (i == wielded_weapon_index || i == worn_armor_index ||
+        i == left_ring_index || i == right_ring_index ||
+        item->kind == OBJ_FOOD ||
+        (item->kind == OBJ_WEAPON && !item->hit_bonus &&
+         !item->damage_bonus) ||
+        (item->kind == OBJ_ARMOR && !item->hit_bonus &&
+         !item->armor_class))
+      continue;
+    if (random_range(++count) == 0) chosen = i;
+  }
+  if (chosen == NO_ITEM_INDEX) return 0;
+
+  item = &inventory[chosen];
+  quantity = item->quantity;
+  item->quantity = 1;
+  inventory_object_name(item);
+  item->quantity = quantity;
+  remove_item(item);
+  erase_monster(monster);
+  monster->hp = 0;
+  epyx_message(rogue_string_at(OFF_NYMPH_STOLE), object_name_buf);
+  return 1;
+}
+
 static void monster_hit_player(monster)
 RogueMonster *monster;
 {
-  if (worn_armor_index != NO_ITEM_INDEX) {
-    armor_guard = !armor_guard;
-    if (armor_guard) {
-      epyx_message("The armor absorbs the hit.");
+  int chance;
+  int damage;
+
+  chance = 12 + monster_table_byte(monster->type, 10);
+  if (worn_armor_index != NO_ITEM_INDEX)
+    chance -= inventory[worn_armor_index].armor_class / 2;
+  if (chance < 2) chance = 2;
+  if (chance > 19) chance = 19;
+
+  if (random_range(20) >= chance) {
+    epyx_message(rogue_string_at(OFF_COMBAT_THE_MONSTER_VERB),
+                 monster_bare_name(monster->type),
+                 rogue_string_at(OFF_COMBAT_MISSES));
+    return;
+  }
+
+  if (monster->type == 'A' && worn_armor_index != NO_ITEM_INDEX) {
+    if ((left_ring_index != NO_ITEM_INDEX &&
+         inventory[left_ring_index].subtype == 13) ||
+        (right_ring_index != NO_ITEM_INDEX &&
+         inventory[right_ring_index].subtype == 13)) {
+      epyx_message(rogue_string_at(OFF_RUST_VANISHES));
+      return;
+    }
+    if (inventory[worn_armor_index].armor_class < 9) {
+      inventory[worn_armor_index].armor_class++;
+      draw_status();
+      epyx_message(rogue_string_at(OFF_ARMOR_WEAKENS));
       return;
     }
   }
 
-  player_hp--;
-  draw_status();
+  if (monster->type == 'N' && nymph_steal(monster)) return;
+  if (monster->type == 'F') {
+    if (flytrap_hold < 9) flytrap_hold++;
+    return;
+  }
+  if (monster->type == 'I') {
+    frozen_turns = 2;
+    return;
+  }
+  if (monster->type == 'L') {
+    if (player_gold) {
+      player_gold -= 1 + random_range(dungeon_level * 10 + 50);
+      if (player_gold < 0) player_gold = 0;
+      rogue_put16(OFF_PLAYER_GOLD, player_gold);
+      draw_status();
+      epyx_message(rogue_string_at(OFF_PURSE_FEELS_LIGHTER));
+    }
+    erase_monster(monster);
+    monster->hp = 0;
+    return;
+  }
+  if ((monster->type == 'V' && random_range(100) < 30) ||
+      (monster->type == 'W' && random_range(100) < 15)) {
+    damage = 1 + random_range(monster->type == 'V' ? 5 : 10);
+    player_max_hp = (char) (player_max_hp - damage);
+    if (player_max_hp < 1) player_max_hp = 1;
+    player_hp = (char) (player_hp - damage);
+    if (player_hp < 1) player_hp = 1;
+    status_invalid = 1;
+    draw_status();
+    epyx_message(rogue_string_at(OFF_SUDDENLY_WEAKER));
+    return;
+  }
+  if (monster->type == 'R' && !random_range(2)) {
+    if ((left_ring_index != NO_ITEM_INDEX &&
+         inventory[left_ring_index].subtype == 2) ||
+        (right_ring_index != NO_ITEM_INDEX &&
+         inventory[right_ring_index].subtype == 2)) {
+      epyx_message(rogue_string_at(OFF_SNAKE_BITE_MOMENTARY));
+      return;
+    }
+    if (player_strength > 3) player_strength--;
+    status_invalid = 1;
+    draw_status();
+    epyx_message(rogue_string_at(OFF_SNAKE_BITE_WEAKENS));
+    return;
+  }
+
+  damage = monster_damage(monster->type);
+  if (worn_armor_index != NO_ITEM_INDEX && damage > 0) damage--;
+  if (damage > 0) {
+    player_hp = (char) (player_hp - damage);
+    draw_status();
+  }
   if (player_hp <= 0) {
     death_cause = monster->type;
     epyx_message(rogue_string_at(OFF_DEATH_YOU_DIED));
@@ -1919,8 +2160,16 @@ int subtype;
                           color);
   }
   if (kind == OBJ_TRAP) return "a trap";
-  if (kind == OBJ_AMULET) return "The Amulet of Yendor";
+  if (kind == OBJ_AMULET) return rogue_string_at(OFF_AMULET_NAME);
   return "something";
+}
+
+static void format_bonus(dest, value)
+char *dest;
+int value;
+{
+  epyx_format(dest, 6, value < 0 ? "-%d" : "+%d",
+              value < 0 ? -value : value);
 }
 
 static const char *inventory_object_name(item)
@@ -1937,21 +2186,17 @@ InventoryItem *item;
   if (item->kind == OBJ_WEAPON && item->quantity <= 1) {
     if (subtype < 0 || subtype >= WEAPON_COUNT) subtype = 0;
     name = arena_table_string(OFF_WEAPON_NAME_TABLE, subtype, 2);
-    epyx_format(hit, sizeof(hit), item->hit_bonus < 0 ? "-%d" : "+%d",
-                item->hit_bonus < 0 ? -item->hit_bonus : item->hit_bonus);
-    epyx_format(damage, sizeof(damage), item->damage_bonus < 0 ? "-%d" : "+%d",
-                item->damage_bonus < 0 ? -item->damage_bonus :
-                item->damage_bonus);
+    format_bonus(hit, item->hit_bonus);
+    format_bonus(damage, item->damage_bonus);
     epyx_format(object_name_buf, sizeof(object_name_buf),
                 "A %s,%s %s", hit, damage, name);
     return object_name_buf;
   }
   if (item->kind == OBJ_ARMOR && item->armor_class) {
     name = object_name(item->kind, item->subtype);
-    epyx_format(hit, sizeof(hit), item->hit_bonus < 0 ? "-%d" : "+%d",
-                item->hit_bonus < 0 ? -item->hit_bonus : item->hit_bonus);
+    format_bonus(hit, item->hit_bonus);
     epyx_format(object_name_buf, sizeof(object_name_buf),
-                "%s %s [armor class %d]", hit, name,
+                rogue_string_at(OFF_ARMOR_CLASS_FORMAT), hit, name,
                 item->armor_class);
     return object_name_buf;
   }
@@ -1965,11 +2210,8 @@ InventoryItem *item;
   if (item->kind == OBJ_WEAPON) {
     if (subtype < 0 || subtype >= WEAPON_COUNT) subtype = 0;
     name = arena_table_string(OFF_WEAPON_NAME_TABLE, subtype, 2);
-    epyx_format(hit, sizeof(hit), item->hit_bonus < 0 ? "-%d" : "+%d",
-                item->hit_bonus < 0 ? -item->hit_bonus : item->hit_bonus);
-    epyx_format(damage, sizeof(damage), item->damage_bonus < 0 ? "-%d" : "+%d",
-                item->damage_bonus < 0 ? -item->damage_bonus :
-                item->damage_bonus);
+    format_bonus(hit, item->hit_bonus);
+    format_bonus(damage, item->damage_bonus);
     epyx_format(object_name_buf, sizeof(object_name_buf),
                 "%d %s,%s %ss", item->quantity, hit, damage, name);
     return object_name_buf;
@@ -2071,7 +2313,6 @@ InventoryItem *item;
 
   if (worn_armor_index == index) {
     worn_armor_index = NO_ITEM_INDEX;
-    armor_guard = 0;
   } else if (worn_armor_index > index && worn_armor_index < NO_ITEM_INDEX) {
     worn_armor_index--;
   }
@@ -2189,17 +2430,18 @@ int dy;
   nx = hero_x + dx;
   ny = hero_y + dy;
   mon = monster_at(nx, ny);
+  if (flytrap_hold && (!mon || mon->type != 'F')) {
+    turn_taken = 1;
+    return;
+  }
   if (mon) {
     mon->hp -= wielded_weapon_index != NO_ITEM_INDEX ? 2 : 1;
     turn_taken = 1;
     if (mon->hp <= 0) {
-      erase_monster(mon);
-      epyx_message(rogue_string_at(OFF_COMBAT_JOIN_FORMAT),
-                   rogue_string_at(OFF_COMBAT_DEFEATED),
-                   monster_name(mon));
+      defeat_monster(mon);
+      message_defeated(mon);
     } else {
-      epyx_message(rogue_string_at(OFF_COMBAT_YOU_VERB),
-                   rogue_string_at(OFF_COMBAT_HIT));
+      message_you_hit();
     }
     return;
   }
@@ -2241,6 +2483,8 @@ RogueMonster *monster;
   int ny;
 
   if (monster->hp <= 0) return;
+  if (monster->type == 'T' && monster->hp < 30 && !random_range(3))
+    monster->hp++;
   if (!overlay_visible_position(monster->x, monster->y)) return;
   if (monster->x >= hero_x - 1 && monster->x <= hero_x + 1 &&
       monster->y >= hero_y - 1 && monster->y <= hero_y + 1 &&
@@ -2495,7 +2739,7 @@ static void quaff_item()
   remove_item(item);
   if (subtype == POTION_HEALING) {
     player_hp += 4;
-    if (player_hp > 12) player_hp = 12;
+    if (player_hp > player_max_hp) player_hp = player_max_hp;
     draw_status();
     epyx_message(rogue_string_at(OFF_POTION_HEALING_MESSAGE));
   } else {
@@ -2583,7 +2827,6 @@ static void wear_armor()
   }
 
   worn_armor_index = (char) inventory_index(item);
-  armor_guard = 0;
   epyx_message(rogue_string_at(OFF_NOW_WEARING_ARMOR),
                object_name(item->kind, item->subtype));
 }
@@ -2607,7 +2850,6 @@ static void take_off_armor()
     name = object_name(item->kind, item->subtype);
   }
   worn_armor_index = NO_ITEM_INDEX;
-  armor_guard = 0;
   epyx_message(rogue_string_at(OFF_TOOK_OFF_ARMOR),
                letter, name);
 }
@@ -2768,13 +3010,10 @@ static void throw_item()
       remove_item(item);
       turn_taken = 1;
       if (mon->hp <= 0) {
-        erase_monster(mon);
-        epyx_message(rogue_string_at(OFF_COMBAT_JOIN_FORMAT),
-                     rogue_string_at(OFF_COMBAT_DEFEATED),
-                     monster_name(mon));
+        defeat_monster(mon);
+        message_defeated(mon);
       } else {
-        epyx_message(rogue_string_at(OFF_COMBAT_YOU_VERB),
-                     rogue_string_at(OFF_COMBAT_HIT));
+        message_you_hit();
       }
       return;
     }
@@ -2822,13 +3061,10 @@ int damage;
     if (mon) {
       mon->hp = (char) (mon->hp - damage);
       if (mon->hp <= 0) {
-        erase_monster(mon);
-        epyx_message(rogue_string_at(OFF_COMBAT_JOIN_FORMAT),
-                     rogue_string_at(OFF_COMBAT_DEFEATED),
-                     monster_name(mon));
+        defeat_monster(mon);
+        message_defeated(mon);
       } else {
-        epyx_message(rogue_string_at(OFF_COMBAT_YOU_VERB),
-                     rogue_string_at(OFF_COMBAT_HIT));
+        message_you_hit();
       }
       return 1;
     }
@@ -2862,9 +3098,10 @@ static void zap_item()
       epyx_message(rogue_string_at(OFF_MISSILE_VANISHES));
   } else if (subtype == WAND_STRIKING) {
     rogue_put8(OFF_WAND_KNOWN_FLAGS + subtype, 1);
-    if (!zap_ray(dx, dy, 3)) epyx_message("The wand strikes the wall.");
+    if (!zap_ray(dx, dy, 3))
+      epyx_message(rogue_string_at(OFF_NOTHING_HAPPENS));
   } else {
-    epyx_message(rogue_string_at(OFF_NOTHING_HAPPENS));
+    epyx_message("You find nothing.");
   }
   turn_taken = 1;
 }
@@ -2973,7 +3210,8 @@ int dy;
 #if ROGUE_WITH_MACROS
 static void define_macro()
 {
-  if (read_prompt_text("Macro: ", rogue_string_at(OFF_MACRO_TEXT), MACRO_MAX))
+  if (read_prompt_text(rogue_string_at(OFF_MACRO_PROMPT),
+                       rogue_string_at(OFF_MACRO_TEXT), MACRO_MAX))
     epyx_message("Macro defined.");
   else
     epyx_message("Cancelled.");
@@ -3191,7 +3429,7 @@ int kind;
 static void show_inventory()
 {
   if (inventory_count == 0) {
-    epyx_message(rogue_string_at(OFF_EMPTY_HANDED));
+    epyx_message(rogue_string_at(OFF_NOT_CARRYING_ANYTHING));
     return;
   }
 
@@ -3248,7 +3486,7 @@ static void show_known_objects()
 
   if (y == 1) {
     epyx_move_cursor(0, y++);
-    epyx_write_string("none");
+    epyx_write_string(rogue_string_at(OFF_NOTHING_DISCOVERED));
   }
   wait_for_space_or_escape_at(y + 1);
   redraw_dungeon();
@@ -3438,13 +3676,14 @@ int restore_game;
   dungeon_level = 1;
   player_gold = 0;
   player_hp = 12;
+  player_max_hp = 12;
+  player_strength = 16;
   wielded_weapon_index = NO_ITEM_INDEX;
   worn_armor_index = NO_ITEM_INDEX;
   left_ring_index = NO_ITEM_INDEX;
   right_ring_index = NO_ITEM_INDEX;
   ring_strength_bonus = 0;
   see_invisible = 0;
-  armor_guard = 0;
   turn_taken = 0;
   inventory_count = 0;
   status_invalid = 1;
@@ -3454,6 +3693,8 @@ int restore_game;
   next_fast_move = 0;
   persistent_fast_mode = rogue_get8(OFF_FAST_MODE_FLAG);
   go_over_object = 0;
+  frozen_turns = 0;
+  flytrap_hold = 0;
   death_cause = 'K';
   rogue_ignore_signals();
 #if ROGUE_HEAP_MAPS
@@ -3502,7 +3743,8 @@ int restore_game;
   }
   redraw_dungeon();
   if (restore_game) {
-    epyx_message("Welcome back, %s.", rogue_string_at(OFF_DEFAULT_PLAYER_NAME));
+    epyx_message(rogue_string_at(OFF_RESTORE_GREETING),
+                 rogue_string_at(OFF_DEFAULT_PLAYER_NAME));
   } else {
     epyx_message(rogue_string_at(OFF_NEW_GAME_GREETING),
                  rogue_string_at(OFF_DEFAULT_PLAYER_NAME));
@@ -3519,8 +3761,13 @@ int restore_game;
       clear_greeting = 0;
       clear_message_next = 0;
     }
-    if (!command(ch)) break;
-    if (ch != 'a') last_command = (char) ch;
+    if (frozen_turns) {
+      frozen_turns--;
+      turn_taken = 1;
+    } else {
+      if (!command(ch)) break;
+      if (ch != 'a') last_command = (char) ch;
+    }
     if (turn_taken) {
       turn_taken = 0;
       epyx_message_start_turn();

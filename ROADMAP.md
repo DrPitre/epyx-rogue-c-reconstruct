@@ -6,8 +6,8 @@ Codex session resumes work.
 
 ## Current State
 
-- Working directory: `/Users/boisy/Projects/coco-shelf/cmoc_os9`
-- Main source: `utils/rogue_epyx_c/rogue_game.c`
+- Working directory: `/Users/boisy/Projects/epyx-rogue-c-reconstruct`
+- Main source: `rogue_game.c`
 - Epyx references:
   - Assembly: `/Users/boisy/Projects/coco-shelf/nitros9/3rdparty/packages/rogue/rogue.asm`
   - Data: `/Users/boisy/Projects/coco-shelf/nitros9/3rdparty/packages/rogue/rogue.dat`
@@ -16,16 +16,16 @@ Codex session resumes work.
 - Build command:
 
 ```sh
-cd /Users/boisy/Projects/coco-shelf/cmoc_os9/utils/rogue_epyx_c
+cd /Users/boisy/Projects/epyx-rogue-c-reconstruct
 make clean && make && os9 ident roguec
 ```
 
 Last known build:
 
 ```text
-roguec:       Module size $76A3 / 30371, data size $1B48 / 6984
-roguec-small: Module size $647B / 25723, data size $12C0 / 4800
-roguec-heap:  Module size $76A8 / 30376, data size $1B48 / 6984
+roguec:       Module size $78F4 / 30964, data size $1B0D / 6925
+roguec-small: Module size $6965 / 26981, data size $1285 / 4741
+roguec-heap:  Module size $78F9 / 30969, data size $1B0D / 6925
 ```
 
 Only expected warning is the existing builtin macro warning from cmoc/clang:
@@ -67,6 +67,8 @@ warning: undefining builtin macro [-Wbuiltin-macro-redefined]
 - Prefer Epyx `rogue.dat` strings/tables over hardcoded text.
 - Check `rogue.asm` before implementing behavior that Epyx already has.
 - Watch code size aggressively. Every new feature should report module size.
+  The full heap build should stay below `32768 - 512` (`32256`) bytes; a
+  32629-byte build could no longer load `ROGUE/rogue.dat` reliably under OS-9.
 - Keep build products out of intentional commits unless the project already
   wants them. `rogue.scr` is now copied by the local Makefile and should be
   included on the runtime disk alongside `rogue.dat`, `rogue.hlp`, and
@@ -86,15 +88,30 @@ This is the next preferred pass. Search for embedded user-facing C strings that
 already exist in `rogue.dat`, add named offsets in `epyx_offsets.h`, and use
 `rogue_string_at()` instead of duplicate literals.
 
-Recent example:
+Recent examples:
 
 - `SPACE to continue ESC to quit` now comes from `rogue.dat` offset `$2AA4`.
-- Full build size changed from 30398 to 30371 bytes, saving 27 bytes.
-- Small build was unchanged because help is compiled out there.
+- Restore greeting now comes from `rogue.dat` offset `$16EB`.
+- Macro prompt now comes from `rogue.dat` offset `$2C16`.
+- Wand/Staff wall miss now reuses the Epyx `nothing happens` string at `$3EC2`.
+- Amulet name and armor-class inventory format now use Epyx strings at `$3A82`
+  and `$3A68`.
+- Inventory-empty, discovered-empty, and top-line `Cont` text now use Epyx
+  strings at `$38E3`, `$3C87`, and `$3659`.
+- Latest pass changed full `roguec` from 30216 to 30130 bytes, saving 86
+  bytes. `roguec-small` changed from 25568 to 25489 bytes, saving 79 bytes.
+- A follow-up duplicate-string audit identified Epyx object formatter fragments
+  at `$399F` through `$3B02`, but direct use of the fragments increased code
+  size because CMOC generated more access/formatting code than the literals
+  cost. Keep those offsets named for a later exact object-formatter rewrite,
+  not for piecemeal substitution.
+- Collapsing repeated local literals such as `Cancelled.` and
+  `ROGUE/rogue.scr` into named C arrays also increased module size; leave those
+  as literals unless a broader string-table strategy replaces them.
 
 Suggested steps:
 
-- Use `rg '"[^"]*[A-Za-z][^"]*"' utils/rogue_epyx_c/*.c` to find remaining
+- Use `rg '"[^"]*[A-Za-z][^"]*"' *.c` to find remaining
   embedded user-facing strings.
 - Check `rogue.asm` comments and `rogue.dat` bytes for matching source strings.
 - Prefer existing Epyx text even when capitalization or spacing differs.
@@ -103,8 +120,6 @@ Suggested steps:
 
 Known candidates to investigate:
 
-- `Pack full.`
-- `The armor absorbs the hit.`
 - `Loading...`
 - simplified object/action/error messages added during recent feature work
 
@@ -308,12 +323,53 @@ Added:
 - a larger active monster pool
 - monster HP rolled from the Epyx monster table level byte
 - actual monster/trap death cause tracking for the death and score screens
+- monster melee damage now rolls the Epyx damage strings from the monster
+  definition table instead of doing flat one-point damage
+- monster attacks now use a compact d20-style hit chance based on monster table
+  level and worn armor instead of always hitting
+- Aquator armor rust is implemented for successful attacks:
+  - `your armor weakens, oh my!` comes from `rogue.dat` offset `$2105`
+  - `the rust vanishes instantly` comes from `rogue.dat` offset `$20E9`
+  - zero-damage monster attacks no longer get forced to one HP damage
+- Nymph item theft is implemented for successful attacks:
+  - `she stole %s!` comes from `rogue.dat` offset `$21A1`
+  - worn, wielded, and hand-worn ring items are not stolen
+  - plain food and plain equipment are skipped
+  - one item is stolen from stacks, and the Nymph disappears after stealing
+- Rattlesnake strength poison is implemented for successful attacks:
+  - `you feel a bite in your leg and now feel weaker` comes from `$2120`
+  - `a bite momentarily weakens you` comes from `$2150`
+  - Sustain Strength ring subtype 2 prevents the drain
+  - a compact 50% bite-effect check stands in for Epyx's fuller protection
+    saving-throw helper
+- Ice Monster freeze is implemented as a silent no-damage special:
+  - successful Ice Monster attacks set a short frozen-turn counter
+  - while frozen, player input burns turns and monsters continue acting
+- Leprechaun gold theft is implemented for successful attacks:
+  - `your purse feels lighter` comes from `rogue.dat` offset `$2188`
+  - stolen gold is clamped at zero and the status line is updated
+  - the Leprechaun disappears after stealing
+- Venus Flytrap hold is implemented in a compact first pass:
+  - successful Flytrap attacks hold the player in place
+  - movement burns turns unless attacking the adjacent Flytrap
+  - killing a Flytrap clears the hold
+- Wraith/Vampire drain is implemented for successful attacks:
+  - `you suddenly feel weaker` comes from `rogue.dat` offset `$216F`
+  - Vampire has a 30% drain chance; Wraith has a 15% drain chance
+  - drain reduces current and maximum hit points
+- Defeated monsters use a compact carried-object drop chance:
+  - killed monsters can leave food, gold, potions, scrolls, or weapons
+  - disappearing thieves do not drop carried objects through this path
+- Troll regeneration is implemented as a compact monster-turn behavior.
 
 Still to revisit later:
 
-- exact monster attack dice, armor, flags, and special attacks
-- exact monster wake/chase behavior
-- monster carried-object generation
+- exact monster rank/armor calculation, flags, and remaining special attacks
+- exact Epyx monster flags, sleep/wake probabilities, and pathing details
+- exact Epyx mcarried object allocation, subtype weighting, and drop tables
+- compact wake/chase and Epyx mcarried probability were prototyped, but backed
+  out because the full heap binary grew to 32629 bytes and crossed the current
+  practical size ceiling for loading `ROGUE/rogue.dat`
 
 ### 10. Command Completeness
 
@@ -338,15 +394,21 @@ Still to revisit later:
 
 ## Known Simplifications To Revisit
 
-- Combat still uses simplified hit/damage behavior.
-- Monster flags, carried objects, special attacks, and wake/chase rules are
-  still simplified.
-- Potion colors still use a C string table instead of Epyx assigned pointer
-  tables.
+- Combat now uses Epyx monster damage strings and a first-pass monster hit
+  chance; Aquator armor rust, Nymph theft, Rattlesnake strength poison, and
+  Ice Monster freeze, Leprechaun gold theft, Venus Flytrap hold, Wraith/Vampire
+  drain, compact monster drops, and Troll regeneration are implemented. Player
+  attack, exact Epyx rank/armor math, and some monster specials are still
+  simplified.
+- Monster carried objects and wake/chase rules are still simplified. Monsters
+  currently move only while visible, which keeps the full heap binary below the
+  current `32768 - 512` safety threshold.
+- Potion colors still use a C string table. The Epyx assembly has the color
+  names near the program-side pointer table, but they are not plain initialized
+  strings in the 24K `rogue.dat` image currently loaded by this port.
 - Scroll names are generated in C but should continue to track Epyx behavior.
 - Dungeon generation is first-pass 3x3 Rogue-style generation, not yet exact
   Epyx generation.
-- `Pack full.` and `The armor absorbs the hit.` are still hardcoded.
 - `Loading...` is intentionally non-Epyx text but acceptable for now because the
   Epyx pause likely hides loading.
 
@@ -369,9 +431,27 @@ removes additional rarely used or non-core systems from the binary:
 
 Latest measured sizes:
 
-- full `roguec`: module `$76A3` / 30371, data `$1B48` / 6984
-- small `roguec-small`: module `$647B` / 25723, data `$12C0` / 4800
-- explicit heap `roguec-heap`: module `$76A8` / 30376, data `$1B48` / 6984
+- full `roguec`: module `$78F4` / 30964, data `$1B0D` / 6925
+- small `roguec-small`: module `$6965` / 26981, data `$1285` / 4741
+- explicit heap `roguec-heap`: module `$78F9` / 30969, data `$1B0D` / 6925
+- static arena `roguec-static`: module `$75B3` / 30131, data `$7B03` / 31491
+
+Latest size comparison against the previous working baseline:
+
+- full `roguec`: 32086 -> 30964, saving 1122 bytes and leaving 1292 bytes
+  under the suspected `32256` ceiling
+- small `roguec-small`: 27295 -> 26981, saving 314 bytes
+- explicit heap `roguec-heap`: 32091 -> 30969, saving 1122 bytes
+
+Size-preserving-feature optimization notes:
+
+- CMOC `-fomit-frame-pointer` saved 44 bytes in the full heap build.
+- Packing save/restore scalar globals into one save-state block saved the
+  largest chunk without removing save/restore functionality.
+- Consolidating screen-control writes, combat result messages, and inventory
+  bonus formatting all reduced code size under CMOC.
+- Tested but rejected: `-O1`, direct inventory row output, fixed trap-count
+  bounds, and shared worn-ring subtype checks; each increased module size.
 
 ## Useful Offsets Already Defined
 
